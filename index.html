@@ -371,6 +371,19 @@ img{max-width:100%}
 .dossier-body{container-type:inline-size}
 @supports (width:1cqw){ .dossier-body .dossier-stamp{font-size:min(30px,8.6cqw);padding:3px 8px 1px} }
 @media (prefers-reduced-motion: reduce){ .dossier,.dossier-sheet{animation:none} }
+
+.scene-wrap{transform-origin:top center}
+.more-below{
+  position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:4;translate:-50% 0;
+  width:44px;height:44px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer;
+  background:rgba(203,163,90,.92);color:#2d1f08;box-shadow:0 4px 14px rgba(0,0,0,.5);animation:bob 1.4s ease-in-out infinite;
+}
+.more-below[hidden]{display:none}
+.more-below:focus-visible{outline:2px solid var(--brass-hi);outline-offset:3px}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
+@media (max-height:820px){ .wheel{width:70px;height:70px} .wheel-wrap{margin:14px 0 2px} .nameplate{margin-bottom:12px} }
+@media (max-width:420px){ .scene{padding-bottom:16px} }
+@media (prefers-reduced-motion: reduce){ .more-below{animation:none} }
 </style>
 </head>
 <body>
@@ -594,6 +607,7 @@ function sceneHTML(){
     '</div>' +
     '</div></main>' +
     '<button class="gear" id="gear" type="button" aria-label="Game settings"' + (ownerSeen ? '' : ' hidden') + '>' + GEAR + '</button>' +
+    '<button class="more-below" id="more-below" type="button" aria-label="Scroll down" hidden><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' +
     '<div class="dossier-view" id="dossier-view" hidden><div class="dossier-backdrop" data-dclose></div>' +
       '<div class="dossier-sheet" role="dialog" aria-modal="true" aria-label="' + esc(cfg.ui.fileLabel || 'File') + '">' +
         '<button class="dossier-close" type="button" data-dclose aria-label="Close">\u2715</button>' +
@@ -668,7 +682,7 @@ function openSafe(){
   document.getElementById('interior').setAttribute('aria-hidden', 'false');
   safe.classList.add('is-open');
   try { if (navigator.vibrate) navigator.vibrate([40, 80, 160]); } catch (e) {}
-  setTimeout(function(){ safe.classList.add('is-done'); window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); }, reduceMotion ? 0 : 2100);
+  setTimeout(function(){ safe.classList.add('is-done'); fitScene(); window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); }, reduceMotion ? 0 : 2100);
 }
 
 var tapCount = 0, tapTimer;
@@ -700,6 +714,7 @@ function bindScene(){
   document.getElementById('gear').addEventListener('click', openAdmin);
   sceneHost.querySelectorAll('[data-loc]').forEach(function(b){ b.addEventListener('click', function(){ enterRoom(b.dataset.loc); }); });
   document.getElementById('log-link').addEventListener('click', openLog);
+  document.getElementById('more-below').addEventListener('click', function(){ window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' }); });
   var dv = document.getElementById('dossier-view');
   document.getElementById('dossier').addEventListener('click', function(){
     dv.hidden = false; document.body.classList.add('lock');
@@ -712,7 +727,35 @@ function bindScene(){
     document.getElementById('dossier').focus();
   });
 }
-function renderScene(){ sceneHost.innerHTML = sceneHTML(); softImages(sceneHost); bindScene(); }
+function renderScene(){ sceneHost.innerHTML = sceneHTML(); softImages(sceneHost); bindScene(); fitScene(); }
+
+/* ---------- fit the safe screen to the phone ---------- */
+var MIN_SCALE = 0.72;
+function fitScene(){
+  var wrap = sceneHost.querySelector('.scene-wrap'), scene = sceneHost.querySelector('.scene');
+  if (!wrap || !scene) return;
+  var ae = document.activeElement;
+  if (ae && ae.classList && ae.classList.contains('plate-input') && wrap.dataset.fit) return; /* keyboard is up: keep the current size */
+  var cs = getComputedStyle(scene);
+  var avail = window.innerHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  var h = wrap.offsetHeight;
+  var s = h > 0 ? Math.max(MIN_SCALE, Math.min(1, avail / h)) : 1;
+  wrap.style.transform = s < 1 ? 'scale(' + s + ')' : '';
+  wrap.style.marginBottom = s < 1 ? (-(1 - s) * h) + 'px' : '';
+  wrap.dataset.fit = '1';
+  updateMoreHint();
+}
+function updateMoreHint(){
+  var hint = document.getElementById('more-below'); if (!hint) return;
+  var doc = document.documentElement;
+  var left = doc.scrollHeight - (window.scrollY + window.innerHeight);
+  hint.hidden = left < 40 || !!roomHost.innerHTML;
+}
+var fitTimer;
+window.addEventListener('resize', function(){ clearTimeout(fitTimer); fitTimer = setTimeout(fitScene, 150); });
+window.addEventListener('scroll', updateMoreHint, { passive: true });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitScene);
+window.addEventListener('load', fitScene);
 
 /* ---------- the places he can visit ---------- */
 var typing = null;
@@ -748,6 +791,7 @@ function leaveRoom(){
   stopTyping();
   roomHost.innerHTML = ''; loc = null;
   var ll = document.getElementById('log-link'); if (ll) ll.hidden = !prog.log.length;
+  fitScene();
   if (admin.hidden && sheet.hidden) document.body.classList.remove('lock');
   if (lastLocBtn && lastLocBtn.focus) lastLocBtn.focus();
 }
